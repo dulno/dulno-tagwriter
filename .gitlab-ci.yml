@@ -1,0 +1,28 @@
+stages:
+  - build
+  - merge
+
+build:
+  stage: build
+  image: gradle:8.13.0-jdk21
+  script:
+    - gradle bundle
+  artifacts:
+    paths:
+      - build/libs/
+      - build/docs/javadoc/
+      - geo/
+    expire_in: 1 day
+
+merge:
+  stage: merge
+  image: curlimages/curl:latest
+  script:
+    - |
+      curl --request POST --header "PRIVATE-TOKEN: $DULNO_GITLAB_PRIVATE_TOKEN" \
+      --data "source_branch=dev&target_branch=main&title=Production deployment" \
+      --data "remove_source_branch=false&squash=true" \
+      "$CI_SERVER_URL/api/v4/projects/$CI_PROJECT_ID/merge_requests"
+  only:
+    - dev
+  when: on_success
