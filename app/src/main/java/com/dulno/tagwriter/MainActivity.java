@@ -13,7 +13,9 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.activity.EdgeToEdge;
 import androidx.activity.result.ActivityResultLauncher;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.Toolbar;
 import com.journeyapps.barcodescanner.CaptureActivity;
 import com.journeyapps.barcodescanner.ScanContract;
 import com.journeyapps.barcodescanner.ScanOptions;
@@ -23,7 +25,6 @@ import net.bplearning.ntag424.encryptionmode.AESEncryptionMode;
 import net.bplearning.ntag424.encryptionmode.LRPEncryptionMode;
 import org.json.JSONObject;
 
-import java.io.IOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -34,18 +35,18 @@ import static net.bplearning.ntag424.constants.Permissions.ACCESS_KEY0;
 
 public class MainActivity extends AppCompatActivity implements NfcAdapter.ReaderCallback {
   private DnaCommunicator dnaC = new DnaCommunicator();
-  private com.google.android.material.textfield.TextInputEditText output;
   private NfcAdapter mNfcAdapter;
   private IsoDep isoDep;
   private byte[] tagIdByte;
   private String qrCodeScan = "";
+  private AlertDialog previousDialog;
 
   private final ActivityResultLauncher<ScanOptions> launcher = registerForActivityResult(
     new ScanContract(),
     result -> {
       if(result.getContents() != null) {
         qrCodeScan = result.getContents();
-        Toast.makeText(this, result.getContents(), Toast.LENGTH_LONG).show();
+        alert("Scan was successful", "Now put the phone to the tag you want to set up");
       }
     }
   );
@@ -56,64 +57,34 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     EdgeToEdge.enable(this);
     setContentView(R.layout.activity_main);
 
-    output = findViewById(R.id.etOutput);
-
     mNfcAdapter = NfcAdapter.getDefaultAdapter(this);
 
     findViewById(R.id.btn_scan).setOnClickListener(v -> startScan());
   }
 
-  private void writeToUiAppend(TextView textView, String message) {
-    runOnUiThread(() -> {
-      String oldString = textView.getText().toString();
-      if (TextUtils.isEmpty(oldString)) {
-        textView.setText(message);
-      } else {
-        String newString = message + "\n" + oldString;
-        textView.setText(newString);
-        System.out.println(message);
-      }
-    });
-  }
-
   @Override
   public void onTagDiscovered(Tag tag) {
-
     if (qrCodeScan.isEmpty()) {
+      alert("No QR-Code scanned",
+        "You must first scan a QR code from the panel to be able to describe a new tag", true);
       return;
     }
-
-    writeToUiAppend(output, "NFC tag discovered");
-
     isoDep = null;
     try {
       isoDep = IsoDep.get(tag);
       if (isoDep != null) {
-        // Make a Vibration
-        vibrateShort();
-
-        runOnUiThread(() -> {
-          output.setText("");
-        });
-
         isoDep.connect();
         if (!isoDep.isConnected()) {
-          writeToUiAppend(output, "Could not connect to the tag, aborted");
+          alert("ERROR", "Could not connect to the tag, aborted", true);
           isoDep.close();
           return;
         }
-
-        writeToUiAppend(output, "NFC tag connected");
-
+        tagIdByte = tag.getId();
         runWorker();
       }
-
-    } catch (IOException e) {
-      writeToUiAppend(output, "ERROR: IOException " + e.getMessage());
-      e.printStackTrace();
-    } catch (Exception e) {
-      writeToUiAppend(output, "ERROR: Exception " + e.getMessage());
-      e.printStackTrace();
+    } catch (Exception exception) {
+      alert("ERROR", exception.getMessage(), true);
+      exception.printStackTrace();
     }
   }
 
@@ -122,14 +93,8 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     super.onResume();
 
     if (mNfcAdapter != null) {
-
       Bundle options = new Bundle();
-      // Work around for some broken Nfc firmware implementations that poll the card too fast
       options.putInt(NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY, 250);
-
-      // Enable ReaderMode for NFC A card type and disable platform sounds
-      // the option NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK is set
-      // so the reader won't try to get a NDEF message
       mNfcAdapter.enableReaderMode(this,
         this,
         NfcAdapter.FLAG_READER_NFC_A |
@@ -214,43 +179,25 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
           try {
             dnaC.setTransceiver((bytesToSend) -> isoDep.transceive(bytesToSend));
           } catch (NullPointerException npe) {
-            writeToUiAppend(output, "Please tap a tag before running any tests, aborted");
+            alert("ERROR", "Please tap a tag before running any tests, aborted", true);
             return;
           }
           dnaC.beginCommunication();
 
-          /**
-           * These steps are running - assuming that all keys are 'default' keys filled with 16 00h values
-           * 1) Authenticate with Application Key 00h in AES mode
-           * 2) If the authentication in AES mode fails try to authenticate in LRP mode
-           * 3) Get the real tag UID by calling GetCardUid
-           * 4) Write an URL template to file 02 with PICC (Uid and/or Counter) plus CMAC
-           * 5) Get existing file settings for file 02
-           * 6) Save the modified file settings back to the tag, using the key derivation
-           */
-
-          // authentication
           boolean isLrpAuthenticationMode = false;
 
           success = AESEncryptionMode.authenticateEV2(dnaC, ACCESS_KEY0, Ntag424.FACTORY_KEY);
-          if (success) {
-            writeToUiAppend(output, "AES Authentication SUCCESS");
-          } else {
-            // if the returnCode is '919d' = permission denied the tag is in LRP mode authentication
+          if (!success) {
             if (dnaC.getLastCommandResult().status2 == PERMISSION_DENIED) {
-              // try to run the LRP authentication
               success = LRPEncryptionMode.authenticateLRP(dnaC, ACCESS_KEY0, Ntag424.FACTORY_KEY);
               if (success) {
-                writeToUiAppend(output, "LRP Authentication SUCCESS");
                 isLrpAuthenticationMode = true;
               } else {
-                writeToUiAppend(output, "LRP Authentication FAILURE");
-                writeToUiAppend(output, "Authentication not possible, Operation aborted");
+                alert("ERROR", "Authentication not possible, Operation aborted", true);
                 return;
               }
             } else {
-              // any other error, print the error code and return
-              writeToUiAppend(output, "AES Authentication FAILURE");
+              alert("ERROR", "Authentication not possible, Operation aborted", true);
               return;
             }
           }
@@ -258,28 +205,49 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
           var content = new JSONObject(qrCodeScan);
 
           var url = new URL("https://pub.dulno.dev/v1/stamp/setup/complete/");
-          var conn = (HttpURLConnection) url.openConnection();
-          conn.setRequestMethod("POST");
-          conn.setRequestProperty("Content-Type", "application/json");
-          conn.setDoOutput(true);
-          String jsonInput = new JSONObject(Map.of("stamp", content.getString("stamp"),
+          var connection = (HttpURLConnection) url.openConnection();
+          connection.setRequestMethod("POST");
+          connection.setRequestProperty("Content-Type", "application/json");
+          connection.setDoOutput(true);
+          var body = new JSONObject(Map.of("stamp", content.getString("stamp"),
             "token", content.getString("token"), "masterKey",
             content.getString("currentMasterKey"), "uid", bytesToHex(tagIdByte))).toString();
-          writeToUiAppend(output, jsonInput);
-          try (OutputStream os = conn.getOutputStream()) {
-            byte[] input = jsonInput.getBytes("utf-8");
+          try (OutputStream os = connection.getOutputStream()) {
+            byte[] input = body.getBytes("utf-8");
             os.write(input, 0, input.length);
           }
-          int responseCode = conn.getResponseCode();
-          writeToUiAppend(output, responseCode + "");
-        } catch (Exception e) {
-          writeToUiAppend(output, "Exception: " + e.getMessage());
+          connection.getResponseCode();
+          qrCodeScan = "";
+          alert("Success", "You have successfully set up the tag");
+          vibrate(500, 100);
+        } catch (Exception exception) {
+          alert("ERROR", exception.getMessage(), true);
         }
-        writeToUiAppend(output, "== FINISHED ==");
-        vibrateShort();
       }
     });
     worker.start();
+  }
+
+  private void alert(String title, String message, boolean vibrate) {
+    alert(title, message);
+    if (vibrate) {
+      vibrate(100, 200);
+    }
+  }
+
+  private void alert(String title, String message) {
+    runOnUiThread(() -> {
+      if (previousDialog != null) {
+        previousDialog.dismiss();
+      }
+      AlertDialog.Builder builder = new AlertDialog.Builder(this);
+      builder.setTitle(title);
+      if (!message.isEmpty()) {
+        builder.setMessage(message);
+      }
+      builder.setPositiveButton("OK", (dialog, which) -> dialog.dismiss());
+      previousDialog = builder.show();
+    });
   }
 
   private String bytesToHex(byte[] bytes) {
@@ -290,13 +258,13 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     return result.toString();
   }
 
-  private void vibrateShort() {
-    // Make a Sound
+  private void vibrate(long milliseconds, int amplitude) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      ((Vibrator) getSystemService(VIBRATOR_SERVICE)).vibrate(VibrationEffect.createOneShot(500, 100));
+      ((Vibrator) getSystemService(VIBRATOR_SERVICE)).vibrate(
+        VibrationEffect.createOneShot(milliseconds, amplitude));
     } else {
       Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
-      v.vibrate(50);
+      v.vibrate(milliseconds);
     }
   }
 
