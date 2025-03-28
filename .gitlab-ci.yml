@@ -4,14 +4,15 @@ stages:
 
 build:
   stage: build
-  image: gradle:8.13.0-jdk21
+  image: cirrusci/android:latest
+  before_script:
+    - yes | sdkmanager --licenses
+    - sdkmanager "platform-tools" "build-tools;30.0.3" "platforms;android-30"
   script:
-    - gradle bundle
+    - ./gradlew build
   artifacts:
     paths:
-      - build/libs/
-      - build/docs/javadoc/
-      - geo/
+      - app/build/outputs/apk
     expire_in: 1 day
 
 merge:
