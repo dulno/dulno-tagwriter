@@ -14,20 +14,5 @@ public final class Ntag424 {
     public static int PICC_FILE_ID = 0x3f00; // pg. 84
     public static int DF_FILE_ID = 0xe110;
     public static byte[] DF_NAME = new byte[]{(byte)0xd2, 0x76, 0x00, 0x00, (byte)0x85, 0x01, 0x01};
-    public static byte[] FACTORY_KEY = hexStringToByteArray("00000000000000000000000000000000");
-
-
-    private static byte[] hexStringToByteArray(String s) {
-      try {
-          int len = s.length();
-          byte[] data = new byte[len / 2];
-          for (int i = 0; i < len; i += 2) {
-              data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4)
-                  + Character.digit(s.charAt(i + 1), 16));
-          }
-          return data;
-      } catch (Exception e) {
-          return null;
-      }
-    }
+    public static byte[] FACTORY_KEY = new byte[16];
 }
