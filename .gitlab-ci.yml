@@ -4,7 +4,7 @@ stages:
 
 build:
   stage: build
-  image: cimg/android:latest
+  image: cimg/android:2025.03.1
   before_script:
     - yes | sdkmanager --licenses
     - sdkmanager "platform-tools" "build-tools;30.0.3" "platforms;android-30"
