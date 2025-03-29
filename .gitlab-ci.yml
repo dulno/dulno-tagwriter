@@ -4,14 +4,12 @@ stages:
 
 build:
   stage: build
-  image: gradle:8.13.0-jdk21
+  image: cimg/android:2025.03.1
   script:
-    - gradle bundle
+    - ./gradlew build
   artifacts:
     paths:
-      - build/libs/
-      - build/docs/javadoc/
-      - geo/
+      - app/build/outputs/apk
     expire_in: 1 day
 
 merge:
