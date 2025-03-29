@@ -18,53 +18,87 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import com.journeyapps.barcodescanner.CaptureActivity;
 import com.journeyapps.barcodescanner.ScanContract;
+import com.journeyapps.barcodescanner.ScanIntentResult;
 import com.journeyapps.barcodescanner.ScanOptions;
 import net.bplearning.ntag424.DnaCommunicator;
+import net.bplearning.ntag424.command.ChangeKey;
+import net.bplearning.ntag424.command.GetKeyVersion;
+import net.bplearning.ntag424.command.SetCapabilities;
 import net.bplearning.ntag424.constants.Ntag424;
+import net.bplearning.ntag424.constants.Permissions;
 import net.bplearning.ntag424.encryptionmode.AESEncryptionMode;
 import net.bplearning.ntag424.encryptionmode.LRPEncryptionMode;
+import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.File;
+import java.io.FileWriter;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.security.SecureRandom;
 import java.util.Map;
 
 import static net.bplearning.ntag424.CommandResult.PERMISSION_DENIED;
 import static net.bplearning.ntag424.constants.Permissions.ACCESS_KEY0;
 
 public class MainActivity extends AppCompatActivity implements NfcAdapter.ReaderCallback {
+  private enum Environment {
+    PRODUCTIVE,
+    STAGING;
+
+    public boolean isProductive() {
+      return this == PRODUCTIVE;
+    }
+
+    public boolean isStaging() {
+      return this == STAGING;
+    }
+  }
+
+  private final Environment environment = Environment.STAGING;
   private DnaCommunicator dnaC = new DnaCommunicator();
   private NfcAdapter mNfcAdapter;
   private IsoDep isoDep;
   private byte[] tagIdByte;
-  private String qrCodeScan = "";
+  private JSONObject qrCodeContent;
   private AlertDialog previousDialog;
-
-  private final ActivityResultLauncher<ScanOptions> launcher = registerForActivityResult(
-    new ScanContract(),
-    result -> {
-      if(result.getContents() != null) {
-        qrCodeScan = result.getContents();
-        alert("Scan was successful", "Now put the phone to the tag you want to set up");
-      }
-    }
-  );
+  private final ActivityResultLauncher<ScanOptions> launcher =
+    registerForActivityResult(new ScanContract(), this::processScanResult);
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     EdgeToEdge.enable(this);
     setContentView(R.layout.activity_main);
-
     mNfcAdapter = NfcAdapter.getDefaultAdapter(this);
-
     findViewById(R.id.btn_scan).setOnClickListener(v -> startScan());
+  }
+
+  private void startScan() {
+    var options = new ScanOptions();
+    options.setOrientationLocked(false);
+    options.setPrompt("");
+    options.setBeepEnabled(false);
+    options.setCaptureActivity(CaptureActivity.class);
+    launcher.launch(options);
+  }
+
+  private void processScanResult(ScanIntentResult result) {
+    if(result.getContents() == null) {
+      return;
+    }
+    try {
+      qrCodeContent = new JSONObject(result.getContents());
+      alert("Scan was successful", "Now put the phone to the tag you want to set up");
+    } catch (Exception exception) {
+      alert("ERROR", "An error has occurred while scanning the qr code. Did you really scan the code from the panel?");
+    }
   }
 
   @Override
   public void onTagDiscovered(Tag tag) {
-    if (qrCodeScan.isEmpty()) {
+    if (qrCodeContent == null) {
       alert("No QR-Code scanned",
         "You must first scan a QR code from the panel to be able to describe a new tag", true);
       return;
@@ -91,9 +125,8 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
   @Override
   protected void onResume() {
     super.onResume();
-
     if (mNfcAdapter != null) {
-      Bundle options = new Bundle();
+      var options = new Bundle();
       options.putInt(NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY, 250);
       mNfcAdapter.enableReaderMode(this,
         this,
@@ -104,128 +137,99 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     }
   }
 
-    /*
-        private void runWorker() {
-        Log.d(TAG, "Change Master Key Worker");
-        Thread worker = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                boolean success = false;
-                try {
-                    dnaC = new DnaCommunicator();
-                    try {
-                        dnaC.setTransceiver((bytesToSend) -> isoDep.transceive(bytesToSend));
-                    } catch (NullPointerException npe) {
-                        writeToUiAppend(output, "Please tap a tag before running any tests, aborted");
-                        return;
-                    }
-                    dnaC.setLogger((info) -> Log.d(TAG, "Communicator: " + info));
-                    dnaC.beginCommunication();
-
-                    // Authenticate with Master Key (Key 00h)
-                    success = AESEncryptionMode.authenticateEV2(dnaC, ACCESS_KEY0, Ntag424.FACTORY_KEY);
-                    if (!success) {
-                        writeToUiAppend(output, "Master Key Authentication FAILURE");
-                        return;
-                    }
-                    writeToUiAppend(output, "Master Key Authentication SUCCESS");
-
-                    // Change Master Key
-                    byte[] newMasterKey = Utils.hexStringToByteArray("00000000000000000000000000000000");
-
-                    try {
-                        int appKeyVersion = GetKeyVersion.run(dnaC, Permissions.ACCESS_KEY0);
-                        ChangeKey.run(dnaC, ACCESS_KEY0, Ntag424.FACTORY_KEY, newMasterKey, appKeyVersion);
-                    } catch (IOException e) {
-                        Log.e(TAG, "ChangeKey IOException: " + e.getMessage());
-                        writeToUiAppend(output, "Change Master Key Error, Operation aborted");
-                        return;
-                    }
-                    writeToUiAppend(output, "Master Key Change SUCCESS");
-                    try {
-                        SetCapabilities.run(dnaC, true);
-                    } catch (IOException e) {
-                        Log.e(TAG, "ChangeKey IOException: " + e.getMessage());
-                        writeToUiAppend(output, "LRP Error, Operation aborted");
-                        return;
-                    }
-                    writeToUiAppend(output, "LRP Enabled");
-                } catch (IOException e) {
-                    Log.e(TAG, "Exception: " + e.getMessage());
-                    writeToUiAppend(output, "Exception: " + e.getMessage());
-                }
-                writeToUiAppend(output, "== FINISHED ==");
-                vibrateShort();
-            }
-        });
-        worker.start();
+  @Override
+  protected void onPause() {
+    super.onPause();
+    if (mNfcAdapter != null) {
+      mNfcAdapter.disableReaderMode(this);
     }
-     */
-    @Override
-    protected void onPause() {
-      super.onPause();
-      if (mNfcAdapter != null) {
-        mNfcAdapter.disableReaderMode(this);
-      }
-    }
+  }
 
   private void runWorker() {
-    Thread worker = new Thread(new Runnable() {
-      @Override
-      public void run() {
-        boolean success = false;
+    var worker = new Thread(() -> {
+      try {
+        dnaC = new DnaCommunicator();
         try {
-          dnaC = new DnaCommunicator();
-          try {
-            dnaC.setTransceiver((bytesToSend) -> isoDep.transceive(bytesToSend));
-          } catch (NullPointerException npe) {
-            alert("ERROR", "Please tap a tag before running any tests, aborted", true);
-            return;
-          }
-          dnaC.beginCommunication();
-
-          boolean isLrpAuthenticationMode = false;
-
-          success = AESEncryptionMode.authenticateEV2(dnaC, ACCESS_KEY0, Ntag424.FACTORY_KEY);
-          if (!success) {
-            if (dnaC.getLastCommandResult().status2 == PERMISSION_DENIED) {
-              success = LRPEncryptionMode.authenticateLRP(dnaC, ACCESS_KEY0, Ntag424.FACTORY_KEY);
-              if (success) {
-                isLrpAuthenticationMode = true;
-              } else {
-                alert("ERROR", "Authentication not possible, Operation aborted", true);
-                return;
-              }
-            } else {
-              alert("ERROR", "Authentication not possible, Operation aborted", true);
-              return;
-            }
-          }
-
-          var content = new JSONObject(qrCodeScan);
-
-          var url = new URL("https://pub.dulno.dev/v1/stamp/setup/complete/");
-          var connection = (HttpURLConnection) url.openConnection();
-          connection.setRequestMethod("POST");
-          connection.setRequestProperty("Content-Type", "application/json");
-          connection.setDoOutput(true);
-          var body = new JSONObject(Map.of("stamp", content.getString("stamp"),
-            "token", content.getString("token"), "masterKey",
-            content.getString("currentMasterKey"), "uid", bytesToHex(tagIdByte))).toString();
-          try (OutputStream os = connection.getOutputStream()) {
-            byte[] input = body.getBytes("utf-8");
-            os.write(input, 0, input.length);
-          }
-          connection.getResponseCode();
-          qrCodeScan = "";
-          alert("Success", "You have successfully set up the tag");
-          vibrate(500, 100);
-        } catch (Exception exception) {
-          alert("ERROR", exception.getMessage(), true);
+          dnaC.setTransceiver((bytesToSend) -> isoDep.transceive(bytesToSend));
+        } catch (NullPointerException npe) {
+          alert("ERROR", "Please tap a tag before running any tests, aborted", true);
+          return;
         }
+        dnaC.beginCommunication();
+        var currentMasterKey = hexToBytes(qrCodeContent.getString("currentMasterKey"));
+        if (!authenticate(currentMasterKey)) {
+          alert("ERROR", "Authentication with the tag has failed. Presumably the key from our system is not the most up-to-date of the tag", true);
+          return;
+        }
+        var newMasterKey = updateMasterKey(currentMasterKey);
+        storeNewMasterKey(newMasterKey);
+        if (!authenticate(newMasterKey)) {
+          alert("ERROR", "Authentication failed when activating LRP. This is extremely unusual. Please contact the developers", true);
+          return;
+        }
+        enableLRP();
+        sendSetupResponse(newMasterKey);
+        qrCodeContent = null;
+        alert("Success", "You have successfully set up the tag");
+        vibrate(500, 100);
+      } catch (Exception exception) {
+        alert("ERROR", exception.getMessage(), true);
+        exception.printStackTrace();
       }
     });
     worker.start();
+  }
+
+  private boolean authenticate(byte[] currentMasterKey) throws Exception {
+    if (AESEncryptionMode.authenticateEV2(dnaC, ACCESS_KEY0, currentMasterKey)) {
+      return true;
+    }
+    if (dnaC.getLastCommandResult().status2 != PERMISSION_DENIED) {
+      return false;
+    }
+    return LRPEncryptionMode.authenticateLRP(dnaC, ACCESS_KEY0, currentMasterKey);
+  }
+
+  private byte[] updateMasterKey(byte[] currentMasterKey) throws Exception {
+    var newMasterKey = new byte[16];
+    var random = new SecureRandom();
+    random.nextBytes(newMasterKey);
+    ChangeKey.run(dnaC, ACCESS_KEY0, currentMasterKey, newMasterKey,
+      GetKeyVersion.run(dnaC, Permissions.ACCESS_KEY0));
+    return newMasterKey;
+  }
+
+  private void storeNewMasterKey(byte[] newMasterKey) throws Exception {
+    var file = new File(getFilesDir(), "dulno_tagwriter_log.txt");
+    try (var writer = new FileWriter(file, true)) {
+      writer.append(System.currentTimeMillis() + "/" +
+        qrCodeContent.getString("stamp") + "/" + bytesToHex(tagIdByte) + ": " +
+        bytesToHex(newMasterKey) + "\n");
+    }
+  }
+
+  private void enableLRP() throws Exception {
+    SetCapabilities.run(dnaC, true);
+  }
+
+  private static final String SETUP_RESPONSE_URL = "https://%s/v1/stamp/setup/complete/";
+
+  private void sendSetupResponse(byte[] newMasterKey) throws Exception {
+    var url = new URL(String.format(SETUP_RESPONSE_URL,
+      environment.isProductive() ? "team.dulno.com" : "pub.dulno.dev"));
+    var connection = (HttpURLConnection) url.openConnection();
+    connection.setRequestMethod("POST");
+    connection.setRequestProperty("Content-Type", "application/json");
+    connection.setDoOutput(true);
+    var content = Map.of("stamp", qrCodeContent.getString("stamp"), "token",
+      qrCodeContent.getString("token"), "masterKey", bytesToHex(newMasterKey),
+      "uid", bytesToHex(tagIdByte));
+    var body = new JSONObject(content).toString();
+    try (var os = connection.getOutputStream()) {
+      var input = body.getBytes("utf-8");
+      os.write(input, 0, input.length);
+    }
+    connection.getResponseCode();
   }
 
   private void alert(String title, String message, boolean vibrate) {
@@ -240,7 +244,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
       if (previousDialog != null) {
         previousDialog.dismiss();
       }
-      AlertDialog.Builder builder = new AlertDialog.Builder(this);
+      var builder = new AlertDialog.Builder(this);
       builder.setTitle(title);
       if (!message.isEmpty()) {
         builder.setMessage(message);
@@ -248,14 +252,6 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
       builder.setPositiveButton("OK", (dialog, which) -> dialog.dismiss());
       previousDialog = builder.show();
     });
-  }
-
-  private String bytesToHex(byte[] bytes) {
-    if (bytes == null) return "";
-    StringBuffer result = new StringBuffer();
-    for (byte b : bytes)
-      result.append(Integer.toString((b & 0xff) + 0x100, 16).substring(1));
-    return result.toString();
   }
 
   private void vibrate(long milliseconds, int amplitude) {
@@ -268,12 +264,28 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     }
   }
 
-  private void startScan() {
-    ScanOptions options = new ScanOptions();
-    options.setOrientationLocked(false);
-    options.setPrompt("");
-    options.setBeepEnabled(false);
-    options.setCaptureActivity(CaptureActivity.class);
-    launcher.launch(options);
+  private String bytesToHex(byte[] bytes) {
+    if (bytes == null) {
+      return "";
+    }
+    var result = new StringBuffer();
+    for (var b : bytes) {
+      result.append(Integer.toString((b & 0xff) + 0x100, 16).substring(1));
+    }
+    return result.toString();
+  }
+
+  private byte[] hexToBytes(String s) {
+    try {
+      int len = s.length();
+      byte[] data = new byte[len / 2];
+      for (int i = 0; i < len; i += 2) {
+        data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4)
+          + Character.digit(s.charAt(i + 1), 16));
+      }
+      return data;
+    } catch (Exception exception) {
+      return null;
+    }
   }
 }
