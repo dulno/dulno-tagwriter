@@ -8,14 +8,10 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
-import android.text.TextUtils;
-import android.widget.TextView;
-import android.widget.Toast;
 import androidx.activity.EdgeToEdge;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.Toolbar;
 import com.journeyapps.barcodescanner.CaptureActivity;
 import com.journeyapps.barcodescanner.ScanContract;
 import com.journeyapps.barcodescanner.ScanIntentResult;
@@ -24,16 +20,13 @@ import net.bplearning.ntag424.DnaCommunicator;
 import net.bplearning.ntag424.command.ChangeKey;
 import net.bplearning.ntag424.command.GetKeyVersion;
 import net.bplearning.ntag424.command.SetCapabilities;
-import net.bplearning.ntag424.constants.Ntag424;
 import net.bplearning.ntag424.constants.Permissions;
 import net.bplearning.ntag424.encryptionmode.AESEncryptionMode;
 import net.bplearning.ntag424.encryptionmode.LRPEncryptionMode;
-import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.File;
 import java.io.FileWriter;
-import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.SecureRandom;
@@ -44,11 +37,11 @@ import static net.bplearning.ntag424.constants.Permissions.ACCESS_KEY0;
 
 public class MainActivity extends AppCompatActivity implements NfcAdapter.ReaderCallback {
   private enum Environment {
-    PRODUCTIVE,
+    PRODUCTION,
     STAGING;
 
-    public boolean isProductive() {
-      return this == PRODUCTIVE;
+    public boolean isProduction() {
+      return this == PRODUCTION;
     }
 
     public boolean isStaging() {
@@ -216,7 +209,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
   private void sendSetupResponse(byte[] newMasterKey) throws Exception {
     var url = new URL(String.format(SETUP_RESPONSE_URL,
-      environment.isProductive() ? "team.dulno.com" : "pub.dulno.dev"));
+      environment.isProduction() ? "team.dulno.com" : "pub.dulno.dev"));
     var connection = (HttpURLConnection) url.openConnection();
     connection.setRequestMethod("POST");
     connection.setRequestProperty("Content-Type", "application/json");
