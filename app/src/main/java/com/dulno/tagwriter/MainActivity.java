@@ -17,12 +17,13 @@ import com.journeyapps.barcodescanner.ScanContract;
 import com.journeyapps.barcodescanner.ScanIntentResult;
 import com.journeyapps.barcodescanner.ScanOptions;
 import net.bplearning.ntag424.DnaCommunicator;
-import net.bplearning.ntag424.command.ChangeKey;
-import net.bplearning.ntag424.command.GetKeyVersion;
-import net.bplearning.ntag424.command.SetCapabilities;
+import net.bplearning.ntag424.command.*;
+import net.bplearning.ntag424.constants.Ntag424;
 import net.bplearning.ntag424.constants.Permissions;
 import net.bplearning.ntag424.encryptionmode.AESEncryptionMode;
 import net.bplearning.ntag424.encryptionmode.LRPEncryptionMode;
+import net.bplearning.ntag424.sdm.NdefTemplateMaster;
+import net.bplearning.ntag424.sdm.SDMSettings;
 import org.json.JSONObject;
 
 import java.io.File;
@@ -156,11 +157,8 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         }
         var newMasterKey = updateMasterKey(currentMasterKey);
         storeNewMasterKey(newMasterKey);
-        if (!authenticate(newMasterKey)) {
-          alert("ERROR", "Authentication failed when activating LRP. This is extremely unusual. Please contact the developers", true);
-          return;
-        }
-        enableLRP();
+        enableLRP(newMasterKey);
+        storePayload(newMasterKey);
         sendSetupResponse(newMasterKey);
         qrCodeContent = null;
         alert("Success", "You have successfully set up the tag");
@@ -201,8 +199,39 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     }
   }
 
-  private void enableLRP() throws Exception {
+  private void enableLRP(byte[] newMasterKey) throws Exception {
+    authenticate(newMasterKey);
     SetCapabilities.run(dnaC, true);
+  }
+
+  private static final String PAYLOAD_FORMAT = "dulno://stamp?stamp=%s&picc={PICC}&cmac={MAC}";
+
+  private void storePayload(byte[] newMasterKey) throws Exception {
+    authenticate(newMasterKey);
+    var fileSettings02 = GetFileSettings.run(dnaC, Ntag424.NDEF_FILE_NUMBER);
+    var sdmSettings = new SDMSettings();
+    sdmSettings.sdmEnabled = true;
+    sdmSettings.sdmMetaReadPerm = Permissions.ACCESS_KEY0;
+    sdmSettings.sdmFileReadPerm = Permissions.ACCESS_KEY0;
+    sdmSettings.sdmReadCounterRetrievalPerm = Permissions.ACCESS_NONE;
+    sdmSettings.sdmOptionEncryptFileData = false;
+    sdmSettings.sdmOptionUid = true;
+    sdmSettings.sdmOptionReadCounter = true;
+    byte[] ndefRecord = null;
+    var master = new NdefTemplateMaster();
+    master.usesLRP = true;
+    master.fileDataLength = 0;
+    var payload = String.format(PAYLOAD_FORMAT, qrCodeContent.getString("stamp"));
+    ndefRecord = master.generateNdefTemplateFromUrlString(payload, sdmSettings);
+    authenticate(newMasterKey);
+    WriteData.run(dnaC, Ntag424.NDEF_FILE_NUMBER, ndefRecord, 0);
+    fileSettings02.sdmSettings = sdmSettings;
+    fileSettings02.readWritePerm = ACCESS_KEY0;
+    fileSettings02.changePerm = ACCESS_KEY0;
+    fileSettings02.readPerm = ACCESS_KEY0;
+    fileSettings02.writePerm = ACCESS_KEY0;
+    authenticate(newMasterKey);
+    ChangeFileSettings.run(dnaC, Ntag424.NDEF_FILE_NUMBER, fileSettings02);
   }
 
   private static final String SETUP_RESPONSE_URL = "https://%s/v1/stamp/setup/complete/";
