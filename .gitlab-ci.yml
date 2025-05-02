@@ -4,7 +4,7 @@ stages:
 
 build:
   stage: build
-  image: cimg/android:2025.03.1
+  image: cimg/android:2025.04.1
   script:
     - ./gradlew build
   artifacts:
