@@ -12,7 +12,6 @@ import androidx.activity.EdgeToEdge;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.Toolbar;
 import com.journeyapps.barcodescanner.CaptureActivity;
 import com.journeyapps.barcodescanner.ScanContract;
 import com.journeyapps.barcodescanner.ScanIntentResult;
@@ -51,7 +50,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     }
   }
 
-  private final Environment environment = Environment.STAGING;
+  private final Environment environment = Environment.PRODUCTION;
   private DnaCommunicator dnaC = new DnaCommunicator();
   private NfcAdapter mNfcAdapter;
   private IsoDep isoDep;
@@ -239,7 +238,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
   private void sendSetupResponse(byte[] newMasterKey) throws Exception {
     var url = new URL(String.format(SETUP_RESPONSE_URL,
-      environment.isProduction() ? "team.dulno.com" : "pub.dulno.dev"));
+      environment.isProduction() ? "api.dulno.com" : "pub.dulno.dev"));
     var connection = (HttpURLConnection) url.openConnection();
     connection.setRequestMethod("POST");
     connection.setRequestProperty("Content-Type", "application/json");
