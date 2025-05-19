@@ -31,6 +31,7 @@ import java.io.FileWriter;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.SecureRandom;
+import java.util.Arrays;
 import java.util.Map;
 
 import static net.bplearning.ntag424.CommandResult.PERMISSION_DENIED;
@@ -50,7 +51,21 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     }
   }
 
+  private enum ScanType {
+    SETUP,
+    RESET;
+
+    public boolean isSetup() {
+      return this == SETUP;
+    }
+
+    public boolean isReset() {
+      return this == RESET;
+    }
+  }
+
   private final Environment environment = Environment.PRODUCTION;
+  private ScanType type;
   private DnaCommunicator dnaC = new DnaCommunicator();
   private NfcAdapter mNfcAdapter;
   private IsoDep isoDep;
@@ -66,7 +81,18 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     EdgeToEdge.enable(this);
     setContentView(R.layout.activity_main);
     mNfcAdapter = NfcAdapter.getDefaultAdapter(this);
-    findViewById(R.id.btn_scan).setOnClickListener(v -> startScan());
+    findViewById(R.id.btn_setup).setOnClickListener(v -> startSetup());
+    findViewById(R.id.btn_reset).setOnClickListener(v -> startReset());
+  }
+
+  private void startSetup() {
+    type = ScanType.SETUP;
+    startScan();
+  }
+
+  private void startReset() {
+    type = ScanType.RESET;
+    startScan();
   }
 
   private void startScan() {
@@ -183,8 +209,12 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
   private byte[] updateMasterKey(byte[] currentMasterKey) throws Exception {
     var newMasterKey = new byte[16];
-    var random = new SecureRandom();
-    random.nextBytes(newMasterKey);
+    if (type.isSetup()) {
+      var random = new SecureRandom();
+      random.nextBytes(newMasterKey);
+    } else {
+      Arrays.fill(newMasterKey, (byte) 0);
+    }
     ChangeKey.run(dnaC, ACCESS_KEY0, currentMasterKey, newMasterKey,
       GetKeyVersion.run(dnaC, Permissions.ACCESS_KEY0));
     return newMasterKey;
