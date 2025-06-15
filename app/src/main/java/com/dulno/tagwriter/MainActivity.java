@@ -234,7 +234,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     SetCapabilities.run(dnaC, true);
   }
 
-  private static final String PAYLOAD_FORMAT = "dulno://stamp?stamp=%s&picc={PICC}&cmac={MAC}";
+  private static final String PAYLOAD_FORMAT = "https://app.%s/?stamp=%s&picc={PICC}&cmac={MAC}";
 
   private void storePayload(byte[] newMasterKey) throws Exception {
     authenticate(newMasterKey);
@@ -251,7 +251,9 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     var master = new NdefTemplateMaster();
     master.usesLRP = true;
     master.fileDataLength = 0;
-    var payload = String.format(PAYLOAD_FORMAT, qrCodeContent.getString("stamp"));
+    var payload = String.format(PAYLOAD_FORMAT,
+      environment.isProduction() ? "dulno.com" : "dulno.dev",
+      qrCodeContent.getString("stamp"));
     ndefRecord = master.generateNdefTemplateFromUrlString(payload, sdmSettings);
     authenticate(newMasterKey);
     WriteData.run(dnaC, Ntag424.NDEF_FILE_NUMBER, ndefRecord, 0);
