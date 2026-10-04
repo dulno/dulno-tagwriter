@@ -1,5 +1,8 @@
 <div align="center">
-  <img src="https://dulno.com/static/img/logo-light.webp" alt="logo" width="128"  height="auto" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/logo-light.webp">
+    <img src=".github/logo-dark.webp" alt="Dulno logo" width="128">
+  </picture>
 
   <h1><b>Dulno - TagWriter</b><br><br></h1>
 
