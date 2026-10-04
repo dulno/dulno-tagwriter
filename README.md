@@ -12,7 +12,6 @@ This TagWriter Android app is used to fill the NFC tags (NTAG 424 DNA) of the di
 |      | Pipeline status                                                           |
 |------|---------------------------------------------------------------------------|
 | main | ![](https://github.com/dulno/dulno-tagwriter/actions/workflows/ci.yml/badge.svg?branch=main) |
-| dev  | ![](https://github.com/dulno/dulno-tagwriter/actions/workflows/ci.yml/badge.svg?branch=dev)  |
 
 ## License
 
